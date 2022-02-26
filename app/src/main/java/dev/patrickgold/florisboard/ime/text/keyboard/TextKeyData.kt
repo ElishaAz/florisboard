@@ -386,6 +386,12 @@ class TextKeyData(
             code = KeyCode.IME_HIDE_UI,
             label = "ime_hide_ui",
         )
+        /** Predefined key data for [KeyCode.VOICE_INPUT] */
+        val VOICE_INPUT = TextKeyData(
+            type = KeyType.FUNCTION,
+            code = KeyCode.VOICE_INPUT,
+            label = "voice_input",
+        )
 
         /** Predefined key data for [KeyCode.SETTINGS] */
         val SETTINGS = TextKeyData(

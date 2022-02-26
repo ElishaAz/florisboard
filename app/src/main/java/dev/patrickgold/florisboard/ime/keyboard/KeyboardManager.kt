@@ -17,6 +17,11 @@
 package dev.patrickgold.florisboard.ime.keyboard
 
 import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.view.KeyEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -62,6 +67,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.*
 
 data class RenderInfo(
     val version: Int = 0,
@@ -163,12 +169,14 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 key.compute(computingEvaluator)
                 key.computeLabelsAndDrawables(computingEvaluator)
             }
-            _renderInfo.postValue(RenderInfo(
-                version = renderInfoVersion++,
-                keyboard = computedKeyboard,
-                state = state,
-                evaluator = computingEvaluator,
-            ))
+            _renderInfo.postValue(
+                RenderInfo(
+                    version = renderInfoVersion++,
+                    keyboard = computedKeyboard,
+                    state = state,
+                    evaluator = computingEvaluator,
+                )
+            )
             smartbarClipboardCursorRenderInfo(state)
         }
     }
@@ -191,11 +199,13 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             key.compute(computingEvaluator)
             key.computeLabelsAndDrawables(computingEvaluator)
         }
-        _smartbarRenderInfo.postValue(RenderInfo(
-            keyboard = computedKeyboard,
-            state = state,
-            evaluator = computingEvaluator,
-        ))
+        _smartbarRenderInfo.postValue(
+            RenderInfo(
+                keyboard = computedKeyboard,
+                state = state,
+                evaluator = computingEvaluator,
+            )
+        )
     }
 
     @Composable
@@ -222,10 +232,16 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     }
 
     fun toggleOneHandedMode(isRight: Boolean) {
-        prefs.keyboard.oneHandedMode.set(when (prefs.keyboard.oneHandedMode.get()) {
-            OneHandedMode.OFF -> if (isRight) { OneHandedMode.END } else { OneHandedMode.START }
-            else -> OneHandedMode.OFF
-        })
+        prefs.keyboard.oneHandedMode.set(
+            when (prefs.keyboard.oneHandedMode.get()) {
+                OneHandedMode.OFF -> if (isRight) {
+                    OneHandedMode.END
+                } else {
+                    OneHandedMode.START
+                }
+                else -> OneHandedMode.OFF
+            }
+        )
     }
 
     fun executeSwipeAction(swipeAction: SwipeAction) {
@@ -286,7 +302,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      *    otherwise            , abc -> abc
      */
     fun fixCase(word: String): String {
-        return when(activeState.inputMode) {
+        return when (activeState.inputMode) {
             InputMode.CAPS_LOCK -> word.uppercase(subtypeManager.activeSubtype().primaryLocale.base)
             InputMode.SHIFT_LOCK -> word.replaceFirstChar { if (it.isLowerCase()) it.titlecase(subtypeManager.activeSubtype().primaryLocale.base) else it.toString() }
             else -> word
@@ -435,7 +451,11 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      * Handles a [KeyCode.SHIFT] down event.
      */
     private fun handleShiftDown(ev: InputKeyEvent) {
-        if (ev.isConsecutiveEventOf(inputEventDispatcher.lastKeyEventDown, prefs.keyboard.longPressDelay.get().toLong())) {
+        if (ev.isConsecutiveEventOf(
+                inputEventDispatcher.lastKeyEventDown,
+                prefs.keyboard.longPressDelay.get().toLong()
+            )
+        ) {
             activeState.inputMode = InputMode.CAPS_LOCK
         } else {
             if (activeState.inputMode == InputMode.NORMAL) {
@@ -488,7 +508,11 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             }
         }
         if (prefs.correction.doubleSpacePeriod.get()) {
-            if (ev.isConsecutiveEventOf(inputEventDispatcher.lastKeyEventUp, prefs.keyboard.longPressDelay.get().toLong())) {
+            if (ev.isConsecutiveEventOf(
+                    inputEventDispatcher.lastKeyEventUp,
+                    prefs.keyboard.longPressDelay.get().toLong()
+                )
+            ) {
                 val text = getTextBeforeCursor(2)
                 if (text.length == 2 && !text.matches("""[.!?‽\s][\s]""".toRegex())) {
                     deleteBackwards()
@@ -497,6 +521,91 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             }
         }
         commitText(KeyCode.SPACE.toChar().toString())
+    }
+
+    /**
+     * Handles a [KeyCode.VOICE_INPUT] event
+     */
+    private fun handleVoiceInput() {
+        if (!SpeechRecognizer.isRecognitionAvailable(appContext)) {
+            appContext.showShortToast("Voice Input is not available")
+            return
+        }
+        appContext.showShortToast("Starting Voice Input")
+
+        val sr = SpeechRecognizer.createSpeechRecognizer(appContext)
+
+        // Create the recognition listener
+        sr.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+            }
+
+            override fun onBeginningOfSpeech() {
+            }
+
+            override fun onRmsChanged(rmsdB: Float) {
+            }
+
+            override fun onBufferReceived(buffer: ByteArray?) {
+            }
+
+            override fun onEndOfSpeech() {
+            }
+
+            override fun onError(error: Int) {
+                // map errors
+                val errorStr = when (error) {
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network Timeout"
+                    SpeechRecognizer.ERROR_NETWORK -> "Network"
+                    SpeechRecognizer.ERROR_AUDIO -> "Audio"
+                    SpeechRecognizer.ERROR_SERVER -> "Server"
+                    SpeechRecognizer.ERROR_CLIENT -> "Client"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Speech Timeout"
+                    SpeechRecognizer.ERROR_NO_MATCH -> "No Match"
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Recognizer Busy"
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Inusfficient permissions"
+                    SpeechRecognizer.ERROR_TOO_MANY_REQUESTS -> "Too Many Rquests"
+                    SpeechRecognizer.ERROR_SERVER_DISCONNECTED -> "Server Disconnected"
+                    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> "Language Not Supported"
+                    SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "Language Unavailable"
+                    else -> "Unknown"
+                }
+                appContext.showShortToast("Voice Input error: $errorStr")
+            }
+
+            override fun onResults(b: Bundle) {
+//                Log.d(TAG, "onResults $results")
+                val data = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                data ?: return
+
+                val res = data[0] // 0 is the best result, the others are additional options.
+                // Might want to add them to the smartbar.
+
+                appContext.showShortToast(res)
+                activeEditorInstance?.commitText(res) // add a phantom space?
+            }
+
+            override fun onPartialResults(partialResults: Bundle?) {
+            }
+
+            override fun onEvent(eventType: Int, params: Bundle?) {
+            }
+        })
+
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+        intent.putExtra(
+            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+        )
+        intent.putExtra(
+            RecognizerIntent.EXTRA_LANGUAGE,
+            // this should be taken from the current active language instead of the default
+            Locale.getDefault()
+        )
+
+
+        // need to add visual cues + a way to stop manually
+        sr.startListening(intent)
     }
 
     /**
@@ -616,6 +725,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 appContext.showShortToast("TODO: implement emoji view (beta10)")
             }
             KeyCode.IME_UI_MODE_CLIPBOARD -> activeState.imeUiMode = ImeUiMode.CLIPBOARD
+            KeyCode.VOICE_INPUT -> handleVoiceInput()
             KeyCode.KANA_SWITCHER -> handleKanaSwitch()
             KeyCode.KANA_HIRA -> handleKanaHira()
             KeyCode.KANA_KATA -> handleKanaKata()
@@ -656,7 +766,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                         }
                     }
                     else -> when (ev.data.type) {
-                        KeyType.CHARACTER, KeyType.NUMERIC ->{
+                        KeyType.CHARACTER, KeyType.NUMERIC -> {
                             val text = ev.data.asString(isForDisplay = false)
                             activeEditorInstance?.commitText(text)
                         }
@@ -685,7 +795,8 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
 
     inner class KeyboardManagerResources {
         val currencySets = MutableLiveData<Map<ExtensionComponentName, CurrencySet>>(emptyMap())
-        val layouts = MutableLiveData<Map<LayoutType, Map<ExtensionComponentName, LayoutArrangementComponent>>>(emptyMap())
+        val layouts =
+            MutableLiveData<Map<LayoutType, Map<ExtensionComponentName, LayoutArrangementComponent>>>(emptyMap())
         val popupMappings = MutableLiveData<Map<ExtensionComponentName, PopupMappingComponent>>(emptyMap())
         val subtypePresets = MutableLiveData<List<SubtypePreset>>(emptyList())
 
@@ -699,7 +810,8 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
 
         private fun parseKeyboardExtensions(keyboardExtensions: List<KeyboardExtension>) = scope.launch {
             val localCurrencySets = mutableMapOf<ExtensionComponentName, CurrencySet>()
-            val localLayouts = mutableMapOf<LayoutType, MutableMap<ExtensionComponentName, LayoutArrangementComponent>>()
+            val localLayouts =
+                mutableMapOf<LayoutType, MutableMap<ExtensionComponentName, LayoutArrangementComponent>>()
             val localPopupMappings = mutableMapOf<ExtensionComponentName, PopupMappingComponent>()
             val localSubtypePresets = mutableListOf<SubtypePreset>()
             for (layoutType in LayoutType.values()) {
@@ -711,11 +823,15 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 }
                 keyboardExtension.layouts.forEach { (type, layoutComponents) ->
                     for (layoutComponent in layoutComponents) {
-                        localLayouts[LayoutType.values().first { it.id == type }]!![ExtensionComponentName(keyboardExtension.meta.id, layoutComponent.id)] = layoutComponent
+                        localLayouts[LayoutType.values().first { it.id == type }]!![ExtensionComponentName(
+                            keyboardExtension.meta.id,
+                            layoutComponent.id
+                        )] = layoutComponent
                     }
                 }
                 keyboardExtension.popupMappings.forEach { popupMapping ->
-                    localPopupMappings[ExtensionComponentName(keyboardExtension.meta.id, popupMapping.id)] = popupMapping
+                    localPopupMappings[ExtensionComponentName(keyboardExtension.meta.id, popupMapping.id)] =
+                        popupMapping
                 }
                 localSubtypePresets.addAll(keyboardExtension.subtypePresets)
             }

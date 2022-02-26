@@ -200,6 +200,9 @@ fun ComputingEvaluator.computeIconResId(data: KeyData): Int? {
         KeyCode.REDO -> {
             R.drawable.ic_redo
         }
+        KeyCode.VOICE_INPUT -> {
+            R.drawable.ic_keyboard_voice
+        }
         KeyCode.KANA_SWITCHER -> {
             if (evaluator.activeState().isKanaKata) {
                 R.drawable.ic_keyboard_kana_switcher_kata
